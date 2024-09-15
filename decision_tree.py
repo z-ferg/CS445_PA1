@@ -121,6 +121,7 @@ class DecisionTree(ABC):
         :param X: Numpy array with shape (num_samples, num_features)
         :param y: Numpy array with length num_samples
         """
+        print("Hi!")
         self._root = self.rec_split(X, y)
 
     def predict(self, X):
@@ -225,9 +226,35 @@ class DecisionTreeRegressor(DecisionTree):
     A binary decision tree regressor for use with real-valued attributes.
 
     """
-    pass
-    # Feel free to add methods as needed. Avoid code duplication by keeping
-    # common functionality in the superclass.
+    def calculate_mse(self, labels):
+        return np.sum((labels - np.mean(labels)) ** 2) / len(labels)
+    
+    def rec_split(self, X, y, cur_depth=0):
+        best_feature = None
+        best_split = float('inf')
+        best_mse = float('inf')
+        if len(X) == 1: return Node()
+        
+        for feature in range(len(X[0])):
+            for split in range(1, len(X[:, feature])):
+                mse = self.calculate_mse(y[:split]) + self.calculate_mse(y[split:])
+                
+                if(mse < best_mse):
+                    best_mse = mse
+                    best_split = split
+                    best_feature = feature
+        
+        new_split = Split(dim=best_feature, pos=best_split,
+                          X_left=X[:best_split], y_left=y[:best_split], counts_left=Counter(y[:best_split]),
+                          X_right=X[best_split:], y_right=y[best_split:], counts_right=Counter(y[best_split:]))
+        
+        node = Node(split=new_split)
+        
+        node.left = self.rec_split(node.split.X_left, node.split.y_left, cur_depth + 1)
+        node.right = self.rec_split(node.split.X_right, node.split.y_right, cur_depth + 1)
+        
+        print(node)
+        return node
 
 
 class Node:
@@ -251,22 +278,16 @@ class Node:
 def tree_demo():
     """Simple illustration of creating and drawing a tree classifier."""
     import draw_tree
-    X = np.array([[0.88, 0.39],
-                  [0.49, 0.52],
-                  [0.68, 0.26],
-                  [0.57, 0.51],
-                  [0.61, 0.73]])
-    y = np.array([1, 0, 0, 0, 1])
+    X = np.array([[0.88, 0.39, 0.5],
+                  [0.49, 0.52, 0.5],
+                  [0.68, 0.26, 0.5],
+                  [0.57, 0.51, 0.5],
+                  [0.61, 0.73, 0.5]])
+    y = np.array([1, 0, 0, 1, 2])
     tree = DecisionTreeClassifier()
-    tree.fit(X, y)
-    draw_tree.draw_tree(X, y, tree)
-    X_test = np.array([[0.63, 0.10],
-                       [0.57, 0.16],
-                       [0.73, 0.41]])
-    # X_test1 = np.array([[0.63, 0.10]])
-    y_test = tree.predict(X_test)
-    print(y_test)
-
+    r_tree = DecisionTreeRegressor()
+    r_tree.rec_split(X, y)
+    print(r_tree._root)
 
 if __name__ == "__main__":
     tree_demo()
