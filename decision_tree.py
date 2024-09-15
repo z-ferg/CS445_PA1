@@ -121,7 +121,6 @@ class DecisionTree(ABC):
         :param X: Numpy array with shape (num_samples, num_features)
         :param y: Numpy array with length num_samples
         """
-        print("Hi!")
         self._root = self.rec_split(X, y)
 
     def predict(self, X):
@@ -151,7 +150,7 @@ class DecisionTreeClassifier(DecisionTree):
     """
     A binary decision tree classifier for use with real-valued attributes.
 
-    """
+    """ 
     def impurity(self, y):
         label_count = Counter(y)
         summation = 1
@@ -226,34 +225,46 @@ class DecisionTreeRegressor(DecisionTree):
     A binary decision tree regressor for use with real-valued attributes.
 
     """
+    def __init__(self, min):
+        super().__init__()
+        self.min_splits = min
+        
     def calculate_mse(self, labels):
         return np.sum((labels - np.mean(labels)) ** 2) / len(labels)
     
     def rec_split(self, X, y, cur_depth=0):
+        same_labels = True  # Check that all labels are same
+        for label in y:
+            if label != y[0]: 
+                same_labels = False
+            
+        if same_labels: 
+            return Node()  # All labels are same, return a leaf
+        if cur_depth >= self.max_depth: 
+            return Node()  # Maximum depth has been reached
+                
         best_feature = None
         best_split = float('inf')
         best_mse = float('inf')
-        if len(X) == 1: return Node()
-        
+
         for feature in range(len(X[0])):
             for split in range(1, len(X[:, feature])):
                 mse = self.calculate_mse(y[:split]) + self.calculate_mse(y[split:])
                 
-                if(mse < best_mse):
+                if(mse < best_mse and len(y[:split]) >= self.min_splits):
                     best_mse = mse
                     best_split = split
                     best_feature = feature
         
-        new_split = Split(dim=best_feature, pos=best_split,
-                          X_left=X[:best_split], y_left=y[:best_split], counts_left=Counter(y[:best_split]),
-                          X_right=X[best_split:], y_right=y[best_split:], counts_right=Counter(y[best_split:]))
+        node = Node()
         
-        node = Node(split=new_split)
+        if best_feature is not None:
+            node.split = Split(dim=best_feature, pos=best_split,
+                            X_left=X[:best_split], y_left=y[:best_split], counts_left=Counter(y[:best_split]),
+                            X_right=X[best_split:], y_right=y[best_split:], counts_right=Counter(y[best_split:]))
+            node.left = self.rec_split(node.split.X_left, node.split.y_left, cur_depth + 1)
+            node.right = self.rec_split(node.split.X_right, node.split.y_right, cur_depth + 1)
         
-        node.left = self.rec_split(node.split.X_left, node.split.y_left, cur_depth + 1)
-        node.right = self.rec_split(node.split.X_right, node.split.y_right, cur_depth + 1)
-        
-        print(node)
         return node
 
 
@@ -285,9 +296,9 @@ def tree_demo():
                   [0.61, 0.73, 0.5]])
     y = np.array([1, 0, 0, 1, 2])
     tree = DecisionTreeClassifier()
-    r_tree = DecisionTreeRegressor()
-    r_tree.rec_split(X, y)
-    print(r_tree._root)
+    r_tree = DecisionTreeRegressor(min=4)
+    r_tree.fit(X, y)
+    print(r_tree._root.split)
 
 if __name__ == "__main__":
     tree_demo()
