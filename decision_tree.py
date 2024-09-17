@@ -121,7 +121,7 @@ class DecisionTree(ABC):
         :param X: Numpy array with shape (num_samples, num_features)
         :param y: Numpy array with length num_samples
         """
-        self._root = self.rec_split(X, y)
+        self._root = self.rec_split(X, y) # Set the root of the tree to the recursive split
 
     def predict(self, X):
         """
@@ -132,7 +132,32 @@ class DecisionTree(ABC):
         :param X:  Numpy array with shape (num_samples, num_features)
         :return: A length num_samples numpy array containing predictions.
         """
-        raise NotImplementedError()
+        y_predicts = []
+        
+        for sample in X:
+            cur_node = self._root # For predictions, start at root for each sample
+        
+            while (cur_node.split is not None): # Go until it hits a leaf
+                val = sample[cur_node.split.dim]
+                
+                if val <= cur_node.split.pos:   # Value should go left
+                    if cur_node.left.left is None:  # Left value should be appended
+                        if isinstance(self, DecisionTreeClassifier):
+                            y_predicts += [cur_node.split.counts_left.most_common()[0][0]]
+                        elif isinstance(self, DecisionTreeRegressor):
+                            y_predicts += [np.mean(cur_node.split.y_left)]
+                            
+                    cur_node = cur_node.left
+                else:   # Value should go right
+                    if cur_node.right.right is None:  # Left value should be appended
+                        if isinstance(self, DecisionTreeClassifier):
+                            y_predicts += [cur_node.split.counts_right.most_common()[0][0]]
+                        elif isinstance(self, DecisionTreeRegressor):
+                            y_predicts += [np.mean(cur_node.split.y_right)]
+                    
+                    cur_node = cur_node.right
+        
+        return np.array(y_predicts)
 
     def get_depth(self):
         """
@@ -194,43 +219,18 @@ class DecisionTreeClassifier(DecisionTree):
         node.right = self.rec_split(best_split.X_right, best_split.y_right, cur_depth + 1)
 
         return node
-    
-    def predict(self, X):
-        y_predicts = []
-        
-        for sample in X:
-            cur_node = self._root
-        
-            while (cur_node.split is not None):
-                val = sample[cur_node.split.dim]
-                
-                if val <= cur_node.split.pos:   # Value should go left
-                    if cur_node.left.left is None:  # Left value should be appended
-                        y_predicts += [cur_node.split.counts_left.most_common()[0][0]]
-                        break
-                    else:
-                        cur_node = cur_node.left
-                else:   # Value should go right
-                    if cur_node.right.right is None:  # Left value should be appended
-                        y_predicts += [cur_node.split.counts_right.most_common()[0][0]]
-                        break
-                    else:
-                        cur_node = cur_node.right
-        
-        return np.array(y_predicts)
 
 
 class DecisionTreeRegressor(DecisionTree):
     """
     A binary decision tree regressor for use with real-valued attributes.
 
-    """
-    def __init__(self, min):
-        super().__init__()
-        self.min_splits = min
-        
-    def calculate_mse(self, labels):
-        return np.sum((labels - np.mean(labels)) ** 2) / len(labels)
+    """ 
+    def calculate_mse(self, y_left, y_right):
+        total = len(y_left) + len(y_right)
+        left_mse = (np.mean(y_left - np.mean(y_left)) ** 2) * len(y_left) / total
+        right_mse = (np.mean(y_right - np.mean(y_right)) ** 2) * len(y_right) / total
+        return left_mse + right_mse
     
     def rec_split(self, X, y, cur_depth=0):
         same_labels = True  # Check that all labels are same
@@ -242,28 +242,22 @@ class DecisionTreeRegressor(DecisionTree):
             return Node()  # All labels are same, return a leaf
         if cur_depth >= self.max_depth: 
             return Node()  # Maximum depth has been reached
-                
-        best_feature = None
-        best_split = float('inf')
+        
+        best_split = None
         best_mse = float('inf')
 
-        for feature in range(len(X[0])):
-            for split in range(1, len(X[:, feature])):
-                mse = self.calculate_mse(y[:split]) + self.calculate_mse(y[split:])
+        for split in split_generator(X, y):
+            if self.calculate_mse(split.y_left, split.y_right) < best_mse:
+                best_split = split
+                best_mse = self.calculate_mse(split.y_left, split.y_right)
                 
-                if(mse < best_mse and len(y[:split]) >= self.min_splits):
-                    best_mse = mse
-                    best_split = split
-                    best_feature = feature
+        if best_split is None: 
+            return Node()  # No good split was found, return leaf
         
-        node = Node()
+        node = Node(split=best_split)
         
-        if best_feature is not None:
-            node.split = Split(dim=best_feature, pos=best_split,
-                            X_left=X[:best_split], y_left=y[:best_split], counts_left=Counter(y[:best_split]),
-                            X_right=X[best_split:], y_right=y[best_split:], counts_right=Counter(y[best_split:]))
-            node.left = self.rec_split(node.split.X_left, node.split.y_left, cur_depth + 1)
-            node.right = self.rec_split(node.split.X_right, node.split.y_right, cur_depth + 1)
+        node.left = self.rec_split(best_split.X_left, best_split.y_left, cur_depth + 1)
+        node.right = self.rec_split(best_split.X_right, best_split.y_right, cur_depth + 1)
         
         return node
 
@@ -288,17 +282,16 @@ class Node:
 
 def tree_demo():
     """Simple illustration of creating and drawing a tree classifier."""
-    import draw_tree
     X = np.array([[0.88, 0.39, 0.5],
                   [0.49, 0.52, 0.5],
                   [0.68, 0.26, 0.5],
                   [0.57, 0.51, 0.5],
                   [0.61, 0.73, 0.5]])
     y = np.array([1, 0, 0, 1, 2])
-    tree = DecisionTreeClassifier()
     r_tree = DecisionTreeRegressor(min=4)
     r_tree.fit(X, y)
     print(r_tree._root.split)
+    
 
 if __name__ == "__main__":
     tree_demo()
